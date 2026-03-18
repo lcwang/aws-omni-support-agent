@@ -1,0 +1,24 @@
+opensearch-py
+retrying
+strands-agents
+strands-agents-tools
+langchain_aws
+tavily-python
+boto3
+
+botocore
+awscli
+ipywidgets
+iprogress
+langchain
+langchain_aws
+langchain-core == 0.3.34
+langchain_community == 0.3.16
+s3fs
+requests
+pypdf
+tqdm
+pandas
+haystack-ai
+datasets
+ragas
