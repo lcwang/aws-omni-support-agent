@@ -1,0 +1,107 @@
+name: Update Agent Code (NOTIFICATION ONLY)
+
+# ⚠️  注意: 本 workflow 不执行实际部署，仅验证代码和发送通知
+# Agent Runtime 更新需要在 SageMaker Notebook 中手动执行:
+#   1. git pull 最新代码
+#   2. 执行 deploy_QA_agent.ipynb (部分或全部 cells)
+#   3. 验证部署成功
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '04_create_knowledge_mcp_gateway_Agent/aws_support_agent.py'
+      - '04_create_knowledge_mcp_gateway_Agent/streamable_http_sigv4.py'
+      - '04_create_knowledge_mcp_gateway_Agent/agent_client.py'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ============================================================================
+  # 验证代码变更
+  # ============================================================================
+  validate:
+    name: Validate Code Changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r 04_create_knowledge_mcp_gateway_Agent/requirements.txt
+          pip install ruff black mypy
+
+      - name: Code quality checks
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          echo "Running code quality checks..."
+          ruff check aws_support_agent.py || true
+          black --check aws_support_agent.py || true
+
+      - name: Validate Agent module
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        env:
+          INIT_MODE: lazy
+        run: |
+          python -c "
+          import aws_support_agent
+          print('✅ Agent module validation passed')
+          print(f'Model: {aws_support_agent.MODEL_ID}')
+          print(f'Region: {aws_support_agent.REGION}')
+          "
+
+  # ============================================================================
+  # 通知: Agent 代码已变更
+  # ============================================================================
+  notify-changes:
+    name: Notify Agent Code Changes
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate deployment reminder
+        run: |
+          echo "### ⚠️  Agent Code Changed - Manual Deployment Required" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Changed files:**" >> $GITHUB_STEP_SUMMARY
+          git diff --name-only HEAD~1 HEAD 04_create_knowledge_mcp_gateway_Agent/ | while read file; do
+            echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Manual deployment steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. 登录 SageMaker Notebook Instance" >> $GITHUB_STEP_SUMMARY
+          echo "2. 在 Terminal 中:" >> $GITHUB_STEP_SUMMARY
+          echo "   \`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "   cd aws-omni-support-agent" >> $GITHUB_STEP_SUMMARY
+          echo "   git pull origin main" >> $GITHUB_STEP_SUMMARY
+          echo "   \`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. 打开并执行:" >> $GITHUB_STEP_SUMMARY
+          echo "   \`04_create_knowledge_mcp_gateway_Agent/deploy_QA_agent.ipynb\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. 验证 Agent 功能正常" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🔗 相关文档:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [部署指南](DEPLOYMENT_GUIDE.md#scenario-2-优化-agent-system-prompt-)" >> $GITHUB_STEP_SUMMARY

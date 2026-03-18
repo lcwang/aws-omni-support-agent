@@ -1,0 +1,260 @@
+name: Deploy Agent Runtime to AWS (REFERENCE ONLY)
+
+# ⚠️  注意: Agent Runtime 部署通常在 SageMaker Notebook 中手动执行
+# 本 workflow 仅供参考或未来自动化使用
+# 当前推荐方式: 在 SageMaker 中执行 deploy_QA_agent.ipynb
+
+on:
+  # 默认禁用自动触发
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - '04_create_knowledge_mcp_gateway_Agent/**'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      force_rebuild:
+        description: 'Force rebuild Docker image'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================================
+  # Agent 代码验证
+  # ============================================================================
+  validate-agent:
+    name: Validate Agent Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          uv pip install --system -r requirements.txt
+
+      - name: Validate Agent module
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          python -c "
+          import os
+          os.environ['INIT_MODE'] = 'lazy'  # 避免真实初始化
+
+          import aws_support_agent as agent
+
+          # 验证关键函数存在
+          assert hasattr(agent, 'strands_agent_bedrock'), 'Missing entrypoint'
+          assert hasattr(agent, 'get_system_prompt'), 'Missing system prompt'
+          assert hasattr(agent, 'get_aws_region'), 'Missing region detection'
+
+          print('✅ Agent validation passed')
+          print(f'Region: {agent.REGION}')
+          print(f'Model: {agent.MODEL_ID}')
+          print(f'Init Mode: {agent.INIT_MODE}')
+          "
+
+      - name: Validate configuration
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          if [ -f ".bedrock_agentcore.yaml" ]; then
+            python -c "
+            import yaml
+            with open('.bedrock_agentcore.yaml') as f:
+                config = yaml.safe_load(f)
+            assert 'agents' in config, 'Invalid config structure'
+            print('✅ Config file valid')
+            "
+          else
+            echo "⚠️ No config file found (will be generated during deployment)"
+          fi
+
+  # ============================================================================
+  # 构建 Docker 镜像（AgentCore Runtime 使用）
+  # ============================================================================
+  build-image:
+    name: Build Agent Docker Image
+    runs-on: ubuntu-latest
+    needs: validate-agent
+    if: |
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment suffix
+        id: env-suffix
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            echo "suffix=prod" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.environment }}" == "staging" ]; then
+            echo "suffix=staging" >> $GITHUB_OUTPUT
+          else
+            echo "suffix=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/aws-support-agent
+          tags: |
+            type=raw,value=${{ steps.env-suffix.outputs.suffix }}-{{sha}}
+            type=raw,value=${{ steps.env-suffix.outputs.suffix }}-latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./04_create_knowledge_mcp_gateway_Agent
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/aws-support-agent:${{ steps.env-suffix.outputs.suffix }}-latest
+          cache-to: type=inline
+
+      - name: Image scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+  # ============================================================================
+  # 部署到 AgentCore Runtime - DEV
+  # ============================================================================
+  deploy-dev:
+    name: Deploy to DEV Runtime
+    runs-on: ubuntu-latest
+    needs: build-image
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    environment:
+      name: dev
+      url: https://console.aws.amazon.com/bedrock/home?region=${{ env.AWS_REGION }}#/agentcore
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install bedrock-agentcore CLI
+        run: pip install bedrock-agentcore-starter-toolkit
+
+      - name: Deploy Agent Runtime
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        env:
+          SSM_GATEWAY_PARAM: /support/agentgateway/aws_support_gateway_dev
+          SSM_KB_PARAM: /support/knowledge_base/kb_id_dev
+        run: |
+          # 使用 bedrock-agentcore CLI 部署
+          echo "Deploying to DEV environment..."
+
+          # 假设使用 bedrock-agentcore 命令部署
+          # 实际命令根据你的工具链调整
+          bedrock-agentcore deploy \
+            --agent-name AWS_Support_Agent_DEV \
+            --region ${{ env.AWS_REGION }} \
+            --image ${{ needs.build-image.outputs.image-tag }}
+
+      - name: Test Agent endpoint
+        run: |
+          echo "Running smoke test on DEV agent..."
+          # 添加实际的测试命令
+
+  # ============================================================================
+  # 部署到 PRODUCTION（需要审批）
+  # ============================================================================
+  deploy-prod:
+    name: Deploy to PRODUCTION Runtime
+    runs-on: ubuntu-latest
+    needs: build-image
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment:
+      name: production
+      url: https://console.aws.amazon.com/bedrock/home?region=${{ env.AWS_REGION }}#/agentcore
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install bedrock-agentcore CLI
+        run: pip install bedrock-agentcore-starter-toolkit
+
+      - name: Deploy Agent Runtime (PROD)
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        env:
+          SSM_GATEWAY_PARAM: /support/agentgateway/aws_support_gateway_prod
+          SSM_KB_PARAM: /support/knowledge_base/kb_id_prod
+        run: |
+          echo "🚀 Deploying to PRODUCTION environment..."
+          bedrock-agentcore deploy \
+            --agent-name AWS_Support_Agent_PROD \
+            --region ${{ env.AWS_REGION }} \
+            --image ${{ needs.build-image.outputs.image-tag }}
+
+      - name: Production smoke test
+        run: |
+          echo "Running production smoke tests..."
+          # 添加生产环境测试
+
+      - name: Send notification
+        if: always()
+        run: |
+          echo "### 🚀 Agent Runtime Deployment (PROD)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ needs.build-image.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,210 @@
+[
+  {
+    "name": "create_support_case",
+    "description": "Create a new AWS Support case with specified subject, service code, category code, severity code, and communication body. Use this when the user wants to open a new support ticket.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "description": "The subject/title of the support case"
+        },
+        "service_code": {
+          "type": "string",
+          "description": "The AWS service code (e.g., 'amazon-elastic-compute-cloud-linux' for EC2). Use describe_services to get valid codes."
+        },
+        "category_code": {
+          "type": "string",
+          "description": "The category code for the issue (e.g., 'instance-issue'). Use describe_services to get valid codes."
+        },
+        "severity_code": {
+          "type": "string",
+          "description": "The severity level: 'low', 'normal', 'high', 'urgent', or 'critical'"
+        },
+        "communication_body": {
+          "type": "string",
+          "description": "The detailed description of the issue"
+        },
+        "cc_email_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of email addresses to CC on the case"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code (default: 'en' for English, 'zh' for Chinese)"
+        },
+        "issue_type": {
+          "type": "string",
+          "description": "Issue type: 'technical', 'account-and-billing', or 'service-limit' (default: 'technical')"
+        },
+        "attachment_set_id": {
+          "type": "string",
+          "description": "Optional attachment set ID from add_attachments_to_set"
+        }
+      },
+      "required": ["subject", "service_code", "category_code", "severity_code", "communication_body"]
+    }
+  },
+  {
+    "name": "describe_support_cases",
+    "description": "Query and retrieve information about existing AWS Support cases. Can filter by case ID, date range, and resolution status. Use this to check on case status or search for cases.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "case_id_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of specific case IDs to retrieve"
+        },
+        "display_id": {
+          "type": "string",
+          "description": "Optional display ID of a specific case (the case number shown in console)"
+        },
+        "after_time": {
+          "type": "string",
+          "description": "Optional start date for filtering (ISO 8601 format, e.g., '2026-01-01T00:00:00Z')"
+        },
+        "before_time": {
+          "type": "string",
+          "description": "Optional end date for filtering (ISO 8601 format)"
+        },
+        "include_resolved_cases": {
+          "type": "boolean",
+          "description": "Whether to include resolved/closed cases (default: false)"
+        },
+        "include_communications": {
+          "type": "boolean",
+          "description": "Whether to include case communications/messages (default: true)"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code (default: 'en')"
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Maximum number of results to return (min: 10, max: 100)"
+        },
+        "next_token": {
+          "type": "string",
+          "description": "Pagination token for retrieving next page of results"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "add_communication_to_case",
+    "description": "Add a new communication/message to an existing support case. Use this to reply to AWS Support or provide additional information on an open case.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "description": "The internal case ID (not display ID). Use describe_support_cases to get the case_id from display_id."
+        },
+        "communication_body": {
+          "type": "string",
+          "description": "The text of the communication/reply"
+        },
+        "cc_email_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of email addresses to CC on this communication"
+        },
+        "attachment_set_id": {
+          "type": "string",
+          "description": "Optional attachment set ID from add_attachments_to_set"
+        }
+      },
+      "required": ["case_id", "communication_body"]
+    }
+  },
+  {
+    "name": "resolve_support_case",
+    "description": "Close/resolve an existing AWS Support case when the issue has been addressed. Use this when the user confirms the problem is solved.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "description": "The internal case ID to resolve. Use describe_support_cases to get the case_id from display_id."
+        }
+      },
+      "required": ["case_id"]
+    }
+  },
+  {
+    "name": "describe_services",
+    "description": "Retrieve the list of AWS services available for support cases, including their service codes, names, and valid category codes. Use this to find the correct service_code and category_code when creating a case.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "service_code_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of specific service codes to retrieve (e.g., ['amazon-elastic-compute-cloud-linux'])"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code (default: 'en')"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "describe_severity_levels",
+    "description": "Retrieve the list of available severity levels for AWS Support cases with their codes and descriptions. Use this to understand severity options: low (general guidance), normal (system impaired), high (production impaired), urgent (production down), critical (business-critical down).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Language code (default: 'en')"
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "add_attachments_to_set",
+    "description": "Upload one or more file attachments to a new or existing attachment set. Returns an attachment_set_id that can be used when creating a case or adding communication. Attachments must be base64-encoded and less than 5MB each. Attachment sets expire after 1 hour.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileName": {
+                "type": "string",
+                "description": "Name of the file (e.g., 'error_log.txt')"
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-encoded file content"
+              }
+            },
+            "required": ["fileName", "data"]
+          },
+          "description": "List of attachments to upload"
+        },
+        "attachment_set_id": {
+          "type": "string",
+          "description": "Optional ID of existing attachment set to add to (if not provided, creates new set)"
+        }
+      },
+      "required": ["attachments"]
+    }
+  }
+]

@@ -1,0 +1,234 @@
+name: Deploy Lambda to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      lambda_name:
+        description: 'Lambda function name (leave empty for default)'
+        required: false
+        type: string
+
+  push:
+    branches:
+      - main
+    paths:
+      - '02_AWS_Support_Case_Lambda/**'
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================================
+  # 部署前检查
+  # ============================================================================
+  pre-deploy-check:
+    name: Pre-deployment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Validate Lambda handler
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          pip install boto3
+          python -c "
+          import lambda_handler
+          import json
+
+          # 验证所有工具处理器都存在
+          handlers = lambda_handler.TOOL_HANDLERS
+          expected_tools = [
+              'create_support_case',
+              'describe_support_cases',
+              'add_communication_to_case',
+              'resolve_support_case',
+              'describe_services',
+              'describe_severity_levels',
+              'add_attachments_to_set'
+          ]
+
+          for tool in expected_tools:
+              assert tool in handlers, f'Missing handler: {tool}'
+
+          print(f'✅ All {len(handlers)} handlers validated')
+          "
+
+      - name: Check tool name length
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          python check_tool_name_length.py
+
+  # ============================================================================
+  # Lambda 部署 - DEV 环境
+  # ============================================================================
+  deploy-dev:
+    name: Deploy to DEV
+    runs-on: ubuntu-latest
+    needs: pre-deploy-check
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    environment:
+      name: dev
+      url: https://console.aws.amazon.com/lambda/home?region=${{ env.AWS_REGION }}#/functions
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install deployment dependencies
+        run: pip install boto3
+
+      - name: Deploy Lambda (DEV)
+        working-directory: 02_AWS_Support_Case_Lambda
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ github.event.inputs.lambda_name || 'aws-support-tools-lambda-dev' }}
+        run: |
+          python deploy_lambda.py
+
+      - name: Test Lambda function
+        working-directory: 02_AWS_Support_Case_Lambda
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ github.event.inputs.lambda_name || 'aws-support-tools-lambda-dev' }}
+        run: |
+          python test_lambda.py
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Lambda Deployment Successful (DEV)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: DEV" >> $GITHUB_STEP_SUMMARY
+          echo "- **Function**: ${{ github.event.inputs.lambda_name || 'aws-support-tools-lambda-dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Lambda 部署 - STAGING 环境
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to STAGING
+    runs-on: ubuntu-latest
+    needs: pre-deploy-check
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://console.aws.amazon.com/lambda/home?region=${{ env.AWS_REGION }}#/functions
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install deployment dependencies
+        run: pip install boto3
+
+      - name: Deploy Lambda (STAGING)
+        working-directory: 02_AWS_Support_Case_Lambda
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ github.event.inputs.lambda_name || 'aws-support-tools-lambda-staging' }}
+        run: |
+          python deploy_lambda.py
+
+      - name: Run integration tests
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          python test_lambda.py
+
+  # ============================================================================
+  # Lambda 部署 - PRODUCTION 环境（需要审批）
+  # ============================================================================
+  deploy-prod:
+    name: Deploy to PRODUCTION
+    runs-on: ubuntu-latest
+    needs: pre-deploy-check
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment:
+      name: production
+      url: https://console.aws.amazon.com/lambda/home?region=${{ env.AWS_REGION }}#/functions
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install deployment dependencies
+        run: pip install boto3
+
+      - name: Create Lambda backup (PROD)
+        run: |
+          echo "Creating backup of current Lambda version..."
+          aws lambda publish-version \
+            --function-name aws-support-tools-lambda-prod \
+            --description "Backup before deployment at $(date)"
+
+      - name: Deploy Lambda (PROD)
+        working-directory: 02_AWS_Support_Case_Lambda
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ github.event.inputs.lambda_name || 'aws-support-tools-lambda-prod' }}
+        run: |
+          python deploy_lambda.py
+
+      - name: Smoke tests
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          python test_lambda.py
+
+      - name: Send deployment notification
+        if: always()
+        run: |
+          echo "### 🚀 PRODUCTION Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Function**: aws-support-tools-lambda-prod" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

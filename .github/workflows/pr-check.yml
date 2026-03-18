@@ -1,0 +1,268 @@
+name: PR Quality Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # ============================================================================
+  # PR 标题和描述检查
+  # ============================================================================
+  pr-metadata:
+    name: Check PR Metadata
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR title format
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            perf
+            test
+            ci
+            chore
+          requireScope: false
+
+      - name: Check PR size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const additions = pr.additions;
+            const deletions = pr.deletions;
+            const total = additions + deletions;
+
+            if (total > 1000) {
+              core.warning(`⚠️ Large PR detected: ${total} lines changed. Consider breaking it into smaller PRs.`);
+            } else {
+              core.info(`✅ PR size: ${total} lines (acceptable)`);
+            }
+
+  # ============================================================================
+  # 代码变更分析
+  # ============================================================================
+  analyze-changes:
+    name: Analyze Code Changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史用于比较
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
+        with:
+          files: |
+            02_AWS_Support_Case_Lambda/**
+            04_create_knowledge_mcp_gateway_Agent/**
+            01_create_support_knowledegbase_rag/**
+
+      - name: Analyze impact
+        run: |
+          echo "### 📊 Change Impact Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.changed-files.outputs.any_changed }}" == "true" ]]; then
+            echo "**Changed modules:**" >> $GITHUB_STEP_SUMMARY
+
+            if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "02_AWS_Support_Case_Lambda"; then
+              echo "- 🔧 Lambda Functions (requires deployment)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "04_create_knowledge_mcp_gateway_Agent"; then
+              echo "- 🤖 Agent Runtime (requires deployment)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if echo "${{ steps.changed-files.outputs.all_changed_files }}" | grep -q "01_create_support_knowledegbase_rag"; then
+              echo "- 📚 Knowledge Base (manual update required)" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+  # ============================================================================
+  # 依赖变更检查
+  # ============================================================================
+  check-dependencies:
+    name: Check Dependency Changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for dependency updates
+        id: dep-changes
+        uses: tj-actions/changed-files@v42
+        with:
+          files: |
+            **/requirements*.txt
+
+      - name: Analyze dependency changes
+        if: steps.dep-changes.outputs.any_changed == 'true'
+        run: |
+          echo "### 📦 Dependency Changes Detected" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Requirements files were modified:" >> $GITHUB_STEP_SUMMARY
+
+          for file in ${{ steps.dep-changes.outputs.all_changed_files }}; do
+            echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action required:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Ensure version pins are updated" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run security scan: \`safety check -r requirements.txt\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. Test locally before merging" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # 配置文件安全检查
+  # ============================================================================
+  check-sensitive-files:
+    name: Check for Sensitive Information
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for account IDs in configs
+        run: |
+          echo "Checking for hardcoded account IDs..."
+
+          if grep -r "887221633712" . --exclude-dir=.git; then
+            echo "::error::Found hardcoded account ID 887221633712"
+            exit 1
+          fi
+
+          if grep -r "AKIA[0-9A-Z]{16}" . --exclude-dir=.git; then
+            echo "::error::Found potential AWS access key"
+            exit 1
+          fi
+
+          echo "✅ No sensitive information detected"
+
+  # ============================================================================
+  # 测试覆盖率报告
+  # ============================================================================
+  test-coverage:
+    name: Test Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov moto
+
+      - name: Run Lambda tests with coverage
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ --cov=. --cov-report=term --cov-report=html
+          else
+            echo "No tests directory, skipping coverage"
+          fi
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: 02_AWS_Support_Case_Lambda/htmlcov/
+
+  # ============================================================================
+  # 自动代码审查
+  # ============================================================================
+  auto-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run code review bot
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const comments = [];
+
+            for (const file of files) {
+              // 检查是否添加了 print() 语句
+              if (file.patch && file.patch.includes('+print(')) {
+                comments.push({
+                  path: file.filename,
+                  body: '⚠️ Consider using `logger` instead of `print()` for production code.',
+                  line: file.patch.split('\n').findIndex(l => l.includes('+print(')) + 1,
+                });
+              }
+
+              // 检查是否有硬编码的超时时间
+              if (file.patch && file.patch.match(/\+.*sleep\(\d+\)/)) {
+                comments.push({
+                  path: file.filename,
+                  body: '💡 Hardcoded sleep detected. Consider making timeout configurable.',
+                  line: file.patch.split('\n').findIndex(l => l.includes('sleep(')) + 1,
+                });
+              }
+            }
+
+            // 添加评论
+            for (const comment of comments) {
+              await github.rest.pulls.createReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                ...comment,
+              });
+            }
+
+  # ============================================================================
+  # 最终状态汇总
+  # ============================================================================
+  pr-summary:
+    name: PR Check Summary
+    runs-on: ubuntu-latest
+    needs: [pr-metadata, analyze-changes, check-dependencies, check-sensitive-files, test-coverage]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "### 🎯 PR Quality Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Metadata | ${{ needs.pr-metadata.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Change Analysis | ${{ needs.analyze-changes.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependencies | ${{ needs.check-dependencies.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.check-sensitive-files.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test-coverage.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY

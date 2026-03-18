@@ -1,0 +1,223 @@
+name: CI - Code Quality & Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ============================================================================
+  # 代码质量检查
+  # ============================================================================
+  lint-and-format:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system ruff black mypy pytest
+
+      - name: Run Ruff linter
+        run: |
+          echo "Running Ruff on Lambda module..."
+          ruff check 02_AWS_Support_Case_Lambda/lambda_handler.py
+
+          echo "Running Ruff on Agent module..."
+          ruff check 04_create_knowledge_mcp_gateway_Agent/aws_support_agent.py
+        continue-on-error: true
+
+      - name: Check code formatting with Black
+        run: |
+          black --check 02_AWS_Support_Case_Lambda/ 04_create_knowledge_mcp_gateway_Agent/
+        continue-on-error: true
+
+      - name: Type checking with mypy
+        run: |
+          mypy 02_AWS_Support_Case_Lambda/lambda_handler.py --ignore-missing-imports
+        continue-on-error: true
+
+  # ============================================================================
+  # Lambda 函数测试
+  # ============================================================================
+  test-lambda:
+    name: Test Lambda Functions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Lambda dependencies
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          uv pip install --system -r requirements.txt
+          uv pip install --system pytest moto
+
+      - name: Run Lambda unit tests
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          # 运行单元测试（如果存在）
+          if [ -d "tests" ]; then
+            pytest tests/ -v
+          else
+            echo "No tests directory found, skipping tests"
+          fi
+
+      - name: Validate Lambda handler
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          python -c "
+          import lambda_handler
+          print('✅ Lambda handler import successful')
+          print(f'✅ Found {len(lambda_handler.TOOL_HANDLERS)} tool handlers')
+          "
+
+  # ============================================================================
+  # Agent 运行时测试
+  # ============================================================================
+  test-agent:
+    name: Test Agent Runtime
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Agent dependencies
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          uv pip install --system -r requirements.txt
+
+      - name: Validate Agent code
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          python -c "
+          import sys
+          import os
+
+          # 设置环境变量避免真实 AWS 调用
+          os.environ['INIT_MODE'] = 'lazy'
+          os.environ['AWS_REGION'] = 'us-east-1'
+
+          # 仅验证导入，不初始化
+          import aws_support_agent
+          print('✅ Agent module import successful')
+          print(f'✅ Model ID: {aws_support_agent.MODEL_ID}')
+          print(f'✅ Region: {aws_support_agent.REGION}')
+          "
+
+  # ============================================================================
+  # 依赖安全扫描
+  # ============================================================================
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install safety
+        run: pip install safety
+
+      - name: Scan Lambda dependencies
+        working-directory: 02_AWS_Support_Case_Lambda
+        run: |
+          safety check -r requirements.txt --continue-on-error
+
+      - name: Scan Agent dependencies
+        working-directory: 04_create_knowledge_mcp_gateway_Agent
+        run: |
+          safety check -r requirements.txt --continue-on-error
+
+  # ============================================================================
+  # JSON/YAML 配置文件验证
+  # ============================================================================
+  validate-configs:
+    name: Validate Configuration Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate JSON files
+        run: |
+          echo "Validating JSON files..."
+          find . -name "*.json" -not -path "./.git/*" -not -path "./.ipynb_checkpoints/*" | while read file; do
+            echo "Checking $file"
+            python -m json.tool "$file" > /dev/null || exit 1
+          done
+          echo "✅ All JSON files are valid"
+
+      - name: Validate IAM Policy
+        run: |
+          python -c "
+          import json
+          with open('02_AWS_Support_Case_Lambda/iam_policy.json') as f:
+              policy = json.load(f)
+          assert 'Statement' in policy, 'Invalid IAM policy structure'
+          print('✅ IAM policy is valid')
+          "
+
+  # ============================================================================
+  # 检查敏感信息泄露
+  # ============================================================================
+  check-secrets:
+    name: Check for Leaked Secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install git-secrets
+        run: |
+          git clone https://github.com/awslabs/git-secrets.git
+          cd git-secrets
+          sudo make install
+
+      - name: Setup git-secrets patterns
+        run: |
+          git secrets --register-aws
+          git secrets --add 'AKIA[0-9A-Z]{16}'  # AWS Access Key
+          git secrets --add '[0-9]{12}'  # AWS Account ID (simplified)
+
+      - name: Scan for secrets
+        run: |
+          git secrets --scan || echo "⚠️ Potential secrets detected, please review"

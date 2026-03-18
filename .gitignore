@@ -83,3 +83,23 @@ dmypy.json
 
 # Thumbnails
 ._*
+
+# CI/CD and deployment artifacts
+launch_result.pkl
+*.pkl
+deployment_package.zip
+/tmp/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Terraform (if added later)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# GitHub Actions local testing
+act/
+.secrets
