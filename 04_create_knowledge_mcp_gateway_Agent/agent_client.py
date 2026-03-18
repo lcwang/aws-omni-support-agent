@@ -8,7 +8,7 @@ from boto3.session import Session
 def test_invoke_agent():
     """Test the deployed support case agent by invoking it with a sample prompt"""
 
-    prompt_text = "帮我查看一下case id:177376641300818的内容，总结给我"
+    prompt_text = "帮我查看一下过去三个月的case并总结给我"
 
     def invoke_agent(prompt_text):
         boto_session = Session()
