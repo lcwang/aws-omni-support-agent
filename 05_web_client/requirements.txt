@@ -1,0 +1,12 @@
+# FastAPI Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# AWS SDK (需要 >= 1.40 才支持 bedrock-agentcore)
+boto3>=1.40.0
+
+# Templates
+jinja2==3.1.5
+
+# ASGI Server
+python-multipart==0.0.20
