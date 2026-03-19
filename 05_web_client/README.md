@@ -94,7 +94,7 @@ sudo apt install python3.11 python3.11-venv -y  # Ubuntu
 
 # 安装 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.cargo/env
+source $HOME/.local/bin/env
 
 # 安装依赖
 cd web_client
