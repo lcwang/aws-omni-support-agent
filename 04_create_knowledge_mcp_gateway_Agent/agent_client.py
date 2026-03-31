@@ -2,15 +2,23 @@ import boto3
 import json
 import pickle
 import os
+import argparse
 from boto3.session import Session
 
 
-def test_invoke_agent():
-    """Test the deployed support case agent by invoking it with a sample prompt"""
+def test_invoke_agent(prompt_text=None, iam_user=None):
+    """Test the deployed support case agent by invoking it with a sample prompt
 
-    prompt_text = "帮我查看一下过去三个月的case并总结给我"
+    Args:
+        prompt_text: 测试提示词
+        iam_user: IAM 用户名（可选，用于 RBAC 测试）
+    """
 
-    def invoke_agent(prompt_text):
+    # 默认测试提示词
+    if not prompt_text:
+        prompt_text = "帮我查看一下过去三个月的case并总结给我"
+
+    def invoke_agent(prompt_text, iam_user=None):
         boto_session = Session()
         #REGION = boto_session.region_name
         REGION = 'us-east-1'
@@ -35,11 +43,19 @@ def test_invoke_agent():
 
         agentcore_client = boto3.client("bedrock-agentcore", region_name=REGION)
 
+        # 构建 payload
+        payload = {"prompt": prompt_text}
+
+        # 如果提供了 iam_user，添加到 payload
+        if iam_user:
+            payload["_user_context"] = {"iam_user": iam_user}
+            print(f"👤 使用用户身份: {iam_user}")
+
         try:
             boto3_response = agentcore_client.invoke_agent_runtime(
                 agentRuntimeArn=agent_arn,
                 qualifier="DEFAULT",
-                payload=json.dumps({"prompt": prompt_text})
+                payload=json.dumps(payload)
             )
 
             print(f"Response status: {boto3_response['statusCode']}")
@@ -73,7 +89,7 @@ def test_invoke_agent():
         return True
 
     print(f"Testing with prompt: {prompt_text}")
-    success = invoke_agent(prompt_text)
+    success = invoke_agent(prompt_text, iam_user)
 
     if success:
         print("✅ Test completed successfully")
@@ -84,4 +100,13 @@ def test_invoke_agent():
 
 
 if __name__ == "__main__":
-    test_invoke_agent()
+    parser = argparse.ArgumentParser(description='测试 AWS Support Agent')
+    parser.add_argument('--prompt', type=str, help='自定义测试提示词')
+    parser.add_argument('--iam-user', type=str, help='IAM 用户名（用于 RBAC 测试）')
+
+    args = parser.parse_args()
+
+    test_invoke_agent(
+        prompt_text=args.prompt,
+        iam_user=args.iam_user
+    )

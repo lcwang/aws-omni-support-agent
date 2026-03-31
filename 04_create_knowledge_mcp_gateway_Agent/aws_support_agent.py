@@ -365,6 +365,15 @@ When a user **explicitly requests to create/manage a case**:
 6. `support-case___describe_severity_levels`: Get severity level options
 7. `support-case___add_attachments_to_set`: Upload attachments (logs, screenshots)
 
+**IMPORTANT - RBAC (Role-Based Access Control):**
+- When calling Case WRITE operations (create_support_case, add_communication_to_case, resolve_support_case, add_attachments_to_set),
+  you MUST include the `_iam_user` parameter if a current user is identified in the system context.
+- Example: When creating a case, if the system indicates current user is "alice",
+  you must call: create_support_case(subject="...", _iam_user="alice", ...)
+- The backend Lambda will check if the user has the required AWS Support permissions.
+- If the user lacks permission, a 403 error will be returned with a clear message.
+- Case READ operations (describe_support_cases, describe_services, describe_severity_levels) do NOT require _iam_user.
+
 ---
 
 ## Case Management Guidelines
@@ -752,20 +761,25 @@ def get_agent():
 @app.entrypoint
 async def strands_agent_bedrock(payload: Dict[str, Any]):
     """
-    Main entrypoint for the AgentCore Runtime deployed agent.
+    Main entrypoint for the AgentCore Runtime deployed agent - 零配置 RBAC 版本
 
     This function is invoked when the agent receives a request through AgentCore Runtime.
-    It extracts the user's prompt from the payload and returns the agent's response.
+    It extracts the user's prompt and user context from the payload.
 
     Args:
-        payload (dict): The incoming request payload containing the user's prompt
-                       Expected format: {"prompt": "user's question"}
+        payload (dict): The incoming request payload
+                       Expected format: {
+                           "prompt": "user's question",
+                           "_user_context": {
+                               "iam_user": "alice"  # Optional
+                           }
+                       }
 
     Yields:
         str or dict: Streaming response chunks or error information
 
     Example payload:
-        {"prompt": "What is the current status of my AWS support cases?"}
+        {"prompt": "创建一个工单", "_user_context": {"iam_user": "alice"}}
     """
     request_id = payload.get("request_id", "unknown")
     start_time = time.time()
@@ -778,18 +792,34 @@ async def strands_agent_bedrock(payload: Dict[str, Any]):
             logger.warning(f"Request {request_id}: Empty prompt, using default")
             user_input = "show me the case in the past four weeks?"
 
-        logger.info(f"Request {request_id}: Processing prompt (length: {len(user_input)})")
+        # Extract user context (for RBAC)
+        user_context = payload.get("_user_context", {})
+        iam_user = user_context.get("iam_user")
+
+        if iam_user:
+            logger.info(f"Request {request_id}: User {iam_user} - Processing prompt (length: {len(user_input)})")
+        else:
+            logger.info(f"Request {request_id}: Anonymous - Processing prompt (length: {len(user_input)})")
+
         logger.debug(f"Request {request_id}: Prompt content: {user_input[:100]}...")
 
         # Lazy initialization of agent on first request
         agent = get_agent()
+
+        # For RBAC: Inject user context into the prompt
+        # This way, when Agent calls Case write tools, it will include the user identity
+        if iam_user:
+            # Prepend user context instruction to the user input
+            user_input_with_context = f"[System: Current IAM user is '{iam_user}'. When calling case write operations (create_support_case, add_communication_to_case, resolve_support_case, add_attachments_to_set), you MUST include '_iam_user: {iam_user}' as a parameter.]\n\nUser request: {user_input}"
+        else:
+            user_input_with_context = user_input
 
         # Track token count for cost monitoring (if available)
         chunk_count = 0
         total_chars = 0
 
         # Stream agent response
-        async for event in agent.stream_async(user_input):
+        async for event in agent.stream_async(user_input_with_context):
             if "data" in event:
                 chunk_count += 1
                 data = event["data"]
