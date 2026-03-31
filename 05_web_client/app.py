@@ -150,7 +150,7 @@ async def health_check():
         }
 
 
-async def stream_agent_response(prompt: str, attachments: list = None) -> AsyncGenerator[str, None]:
+async def stream_agent_response(prompt: str, attachments: list = None, user_id: str = None, session_id: str = None) -> AsyncGenerator[str, None]:
     """流式调用 Agent 并生成响应"""
     try:
         agent_arn = get_agent_arn()
@@ -200,12 +200,26 @@ async def stream_agent_response(prompt: str, attachments: list = None) -> AsyncG
         # 完全按照 agent_client.py 的方式调用
         agentcore_client = boto3.client("bedrock-agentcore", region_name=REGION)
 
-        # 调用 Agent Runtime（使用原始的 API）
-        boto3_response = agentcore_client.invoke_agent_runtime(
-            agentRuntimeArn=agent_arn,
-            qualifier="DEFAULT",
-            payload=json.dumps({"prompt": prompt})
-        )
+        # 构建 payload
+        payload = {"prompt": prompt}
+
+        # 如果提供了 user_id，添加到 payload
+        if user_id:
+            payload["_user_context"] = {"iam_user": user_id}
+
+        # 构建调用参数
+        invoke_params = {
+            "agentRuntimeArn": agent_arn,
+            "qualifier": "DEFAULT",
+            "payload": json.dumps(payload)
+        }
+
+        # 如果提供了 session_id，添加到参数中（维持会话上下文）
+        if session_id:
+            invoke_params["runtimeSessionId"] = session_id  # 正确的参数名
+
+        # 调用 Agent Runtime
+        boto3_response = agentcore_client.invoke_agent_runtime(**invoke_params)
 
         # 处理流式响应（真正的流式读取）
         if "text/event-stream" in boto3_response.get("contentType", ""):
@@ -267,17 +281,19 @@ async def stream_agent_response(prompt: str, attachments: list = None) -> AsyncG
 
 @app.post("/chat")
 async def chat(request: Request):
-    """聊天接口 - 支持流式响应和附件上传"""
+    """聊天接口 - 支持流式响应、附件上传、用户身份验证和会话管理"""
     try:
         body = await request.json()
         prompt = body.get("message", "")
         attachments = body.get("attachments", [])
+        user_id = body.get("user_id")  # 提取用户 ID
+        session_id = body.get("session_id")  # 提取 session ID
 
         if not prompt and not attachments:
             return {"error": "Message or attachments required"}
 
         return StreamingResponse(
-            stream_agent_response(prompt, attachments),
+            stream_agent_response(prompt, attachments, user_id, session_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
