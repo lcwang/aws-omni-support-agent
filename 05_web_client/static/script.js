@@ -1,6 +1,44 @@
 // State
 let isStreaming = false;
 let attachments = [];
+let sessionId = null; // Session ID 会在发送消息时根据用户生成或恢复
+let currentUserId = null; // 当前 session 对应的用户
+
+// 生成 Session ID（基于用户，最小 33 字符）
+function generateSessionId(userId) {
+    const userPrefix = userId ? userId : 'anonymous';
+    const timestamp = Date.now();
+    // 生成更长的随机字符串确保总长度 >= 33
+    const random1 = Math.random().toString(36).substr(2, 9);
+    const random2 = Math.random().toString(36).substr(2, 9);
+    return `${userPrefix}-${timestamp}-${random1}${random2}`;
+}
+
+// 获取或创建用户的 Session ID（使用 localStorage 持久化）
+function getOrCreateSessionId(userId) {
+    const storageKey = `session_${userId || 'anonymous'}`;
+
+    // 尝试从 localStorage 恢复
+    const savedSessionId = localStorage.getItem(storageKey);
+
+    if (savedSessionId) {
+        console.log(`Restored session for ${userId}:`, savedSessionId);
+        return savedSessionId;
+    }
+
+    // 如果没有，生成新的并保存
+    const newSessionId = generateSessionId(userId);
+    localStorage.setItem(storageKey, newSessionId);
+    console.log(`Created new session for ${userId}:`, newSessionId);
+    return newSessionId;
+}
+
+// 清除用户的 Session（开始新对话）
+function clearUserSession(userId) {
+    const storageKey = `session_${userId || 'anonymous'}`;
+    localStorage.removeItem(storageKey);
+    console.log(`Cleared session for ${userId}`);
+}
 
 // DOM elements (declared in global scope but will be initialized in DOMContentLoaded)
 let messagesContainer;
@@ -13,6 +51,8 @@ let attachmentButton;
 let fileInput;
 let attachmentsContainer;
 let attachmentsList;
+let userIdInput;
+let resetSessionBtn;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -27,11 +67,15 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput = document.getElementById('file-input');
     attachmentsContainer = document.getElementById('attachments-container');
     attachmentsList = document.getElementById('attachments-list');
+    userIdInput = document.getElementById('user-id-input');
+    resetSessionBtn = document.getElementById('reset-session-btn');
 
     console.log('DOM elements initialized:', {
         attachmentButton: !!attachmentButton,
         fileInput: !!fileInput,
-        attachmentsContainer: !!attachmentsContainer
+        attachmentsContainer: !!attachmentsContainer,
+        userIdInput: !!userIdInput,
+        resetSessionBtn: !!resetSessionBtn
     });
 
     checkHealth();
@@ -94,6 +138,66 @@ function setupEventListeners() {
         fileInput.addEventListener('change', handleFileSelect);
         console.log('File input listener added');
     }
+
+    // Reset session button
+    if (resetSessionBtn) {
+        resetSessionBtn.addEventListener('click', resetSession);
+        console.log('Reset session button listener added');
+    }
+}
+
+// Reset session - start new conversation
+function resetSession() {
+    if (isStreaming) {
+        alert('请等待当前消息完成');
+        return;
+    }
+
+    if (confirm('确定要开始新对话吗？当前对话历史将清空（包括云端历史）。')) {
+        // 获取当前用户 ID
+        const userId = userIdInput.value.trim();
+
+        // 清除该用户的 session（从 localStorage 删除）
+        clearUserSession(userId);
+
+        // 生成新的 session ID
+        sessionId = getOrCreateSessionId(userId);
+        currentUserId = userId;
+        console.log('New session ID:', sessionId);
+
+        // 清空消息容器（保留欢迎消息）
+        const welcomeMessage = messagesContainer.querySelector('.message.assistant');
+        messagesContainer.innerHTML = '';
+        if (welcomeMessage) {
+            messagesContainer.appendChild(welcomeMessage);
+        }
+
+        // 清空附件
+        attachments = [];
+        updateAttachmentsDisplay();
+
+        // 显示提示
+        const userInfo = userId ? ` (用户: ${userId})` : '';
+        addSystemMessage(`✨ 已开始新对话${userInfo}`);
+    }
+}
+
+// Add system message
+function addSystemMessage(content) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message system';
+    messageDiv.style.textAlign = 'center';
+    messageDiv.style.color = 'var(--text-secondary)';
+    messageDiv.style.fontSize = '14px';
+    messageDiv.style.padding = '8px';
+    messageDiv.textContent = content;
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+
+    // 3 秒后自动消失
+    setTimeout(() => {
+        messageDiv.remove();
+    }, 3000);
 }
 
 // Handle file selection
@@ -196,6 +300,29 @@ async function handleSubmit(e) {
 
     const message = messageInput.value.trim();
     if ((!message && attachments.length === 0) || isStreaming) return;
+
+    // 获取当前用户 ID
+    const userId = userIdInput.value.trim();
+
+    // 检查用户是否变更
+    if (currentUserId !== userId) {
+        console.log(`User changed from ${currentUserId} to ${userId}`);
+
+        // 恢复或创建该用户的 session
+        sessionId = getOrCreateSessionId(userId);
+        currentUserId = userId;
+
+        // 如果有对话历史，提示用户切换了身份
+        if (messagesContainer.children.length > 1) {
+            addSystemMessage(`👤 已切换用户: ${userId || '匿名'} (恢复历史会话)`);
+        }
+    }
+
+    // 如果还没有 session ID，获取或创建一个
+    if (!sessionId) {
+        sessionId = getOrCreateSessionId(userId);
+        currentUserId = userId;
+    }
 
     // Add user message (with attachments info if any)
     let displayMessage = message;
@@ -332,9 +459,18 @@ async function streamResponse(message, attachmentData = []) {
     let fullContent = '';
 
     try {
-        const requestBody = { message };
+        const requestBody = {
+            message,
+            session_id: sessionId  // 添加 session ID
+        };
         if (attachmentData.length > 0) {
             requestBody.attachments = attachmentData;
+        }
+
+        // 添加用户 ID（如果有输入）
+        const userId = userIdInput.value.trim();
+        if (userId) {
+            requestBody.user_id = userId;
         }
 
         const response = await fetch('/chat', {

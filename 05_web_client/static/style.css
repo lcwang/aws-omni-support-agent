@@ -515,3 +515,62 @@ body {
         padding: 12px 16px;
     }
 }
+
+/* User ID Input Styles */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.user-id-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-id-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.user-id-input {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    min-width: 180px;
+    transition: border-color 0.2s;
+}
+
+.user-id-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.1);
+}
+
+.user-id-input::placeholder {
+    color: #999;
+}
+
+/* Responsive adjustments for user ID input */
+@media (max-width: 768px) {
+    .header-right {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+    }
+
+    .user-id-container {
+        font-size: 12px;
+    }
+
+    .user-id-input {
+        min-width: 140px;
+        font-size: 13px;
+        padding: 4px 10px;
+    }
+}
