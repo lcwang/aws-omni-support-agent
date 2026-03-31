@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 
 # 配置
-LAMBDA_FUNCTION_NAME = 'aws-support-tools-lambda0331'
-LAMBDA_ROLE_NAME = 'aws-support-lambda-execution-role-0331'
+LAMBDA_FUNCTION_NAME = 'aws-support-tools-lambda'
+LAMBDA_ROLE_NAME = 'aws-support-lambda-execution-role'
 LAMBDA_RUNTIME = 'python3.11'
 LAMBDA_HANDLER = 'lambda_handler.lambda_handler'
 LAMBDA_TIMEOUT = 60  # 秒
