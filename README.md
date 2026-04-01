@@ -599,12 +599,6 @@ of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction...
 ```
 
----
-
-## 📞 联系方式
-
-- **GitHub Issues**: [提交 Issue](https://github.com/YOUR_USERNAME/aws-omni-support-agent/issues)
-- **Email**: your-email@example.com
 
 ---
 
@@ -614,7 +608,6 @@ in the Software without restriction...
 
 - [Amazon Bedrock](https://aws.amazon.com/bedrock/) - AI Foundation Models
 - [Strands Agents](https://github.com/strands-ai/strands) - Agent Framework
-- [LangChain](https://github.com/langchain-ai/langchain) - LLM Application Framework
 - [FastAPI](https://github.com/tiangolo/fastapi) - Modern Web Framework
 
 ---
