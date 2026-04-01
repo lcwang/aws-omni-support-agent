@@ -310,13 +310,15 @@ python3 deploy_lambda.py
 cd 05_web_client
 
 # 2. 安装依赖
-pip install -r requirements.txt
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 
 # 3. 配置 Agent ARN
 export AGENT_ARN="your-agent-arn-here"
 
 # 4. 启动服务
-uvicorn app:app --host 0.0.0.0 --port 8000
+python3 app.py
 
 # 5. 访问
 # http://localhost:8000
