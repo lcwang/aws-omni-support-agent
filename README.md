@@ -240,6 +240,8 @@ Agent Runtime → Gateway → Lambda (RBAC) → Support API
 ## 💻 效果展示
 <img width="1681" height="1555" alt="image" src="https://github.com/user-attachments/assets/567053f4-edb3-4e10-82ab-79ddab959dc8" />
 <img width="1614" height="1686" alt="image" src="https://github.com/user-attachments/assets/2291455b-a91d-4c2b-b05b-f7862c6be6f0" />
+<img width="1332" height="1119" alt="image" src="https://github.com/user-attachments/assets/d1c12442-0b02-4e5b-bac9-22d723723a3c" />
+<img width="1358" height="1165" alt="image" src="https://github.com/user-attachments/assets/86e97e6d-115a-420b-8435-52dd830e0875" />
 
 
 ---
