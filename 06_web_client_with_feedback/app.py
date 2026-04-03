@@ -437,8 +437,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"⚠️  Agent ARN not configured: {e}")
 
-    # Knowledge Base 配置已在文件开头通过环境变量设置（第 20-21 行）
-    # 不需要在这里再调用 configure_kb()
+    # Knowledge Base 配置通过环境变量自动读取（见 feedback/config.py）
     if FEEDBACK_ENABLED:
         from feedback.config import get_config_summary
         config = get_config_summary()

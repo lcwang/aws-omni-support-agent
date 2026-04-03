@@ -90,58 +90,51 @@ Bedrock Knowledge Base 自动处理:
 
 ---
 
-### 方法 1: 修改 app.py（推荐）
+### 方法 1: 使用 .env 文件（推荐）
 
-编辑 `06_web_client_with_feedback/app.py`，在文件末尾找到：
+编辑 `06_web_client_with_feedback/.env` 文件（如果不存在，从 `.env.example` 复制）：
 
-```python
-# 配置 Bedrock Knowledge Base（可选，仅点赞更新 RAG 需要）
-# 取消下面的注释并填入你的配置：
-# if FEEDBACK_ENABLED:
-#     try:
-#         from feedback.operations import configure_kb
-#         configure_kb(
-#             knowledge_base_id="YOUR_KB_ID",
-#             s3_bucket="YOUR_S3_BUCKET"
-#         )
-#         print(f"✅ Knowledge Base configured for feedback RAG updates")
-#     except Exception as e:
-#         print(f"⚠️  Knowledge Base not configured: {e}")
+```bash
+cd 06_web_client_with_feedback
+cp .env.example .env
+vim .env  # 或用你喜欢的编辑器
 ```
 
-**取消注释并填入你的配置**:
+添加以下配置：
 
-```python
-if FEEDBACK_ENABLED:
-    try:
-        from feedback.operations import configure_kb
-        configure_kb(
-            knowledge_base_id="YOUR_KB_ID",  # ← 你的 Knowledge Base ID
-            s3_bucket="my-kb-data-source"    # ← 你的 S3 bucket 名称（不是 ARN）
-        )
-        print(f"✅ Knowledge Base configured for feedback RAG updates")
-    except Exception as e:
-        print(f"⚠️  Knowledge Base not configured: {e}")
+```bash
+# Knowledge Base 配置（可选，用于点赞更新 RAG）
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=your-s3-bucket-name
+KB_S3_PREFIX=validated-qa/
 ```
+
+**替换为你的实际值**：
+- `YOUR_KB_ID` → 你的 Knowledge Base ID（例如：OWYUVBRMPH）
+- `your-s3-bucket-name` → 你的 S3 bucket **名称**（不是 ARN）
+
+然后启动服务：
+```bash
+./start.sh
+```
+
+`start.sh` 脚本会自动加载 `.env` 文件，`feedback/config.py` 会读取环境变量。**无需修改任何代码**。
 
 ---
 
-### 方法 2: 使用环境变量
+### 方法 2: 直接导出环境变量（临时）
 
-设置以下环境变量：
+如果不想创建 `.env` 文件，可以在启动前导出环境变量：
 
 ```bash
 export KNOWLEDGE_BASE_ID="YOUR_KB_ID"
-export KB_S3_BUCKET="my-kb-data-source"
+export KB_S3_BUCKET="your-s3-bucket-name"
 export KB_S3_PREFIX="validated-qa/"  # 可选，默认就是这个
-```
 
-然后启动：
-```bash
 python3 app.py
 ```
 
-系统会自动读取环境变量并配置。
+这种方式适合临时测试，但不推荐在生产环境使用（环境变量会在 shell session 结束后丢失）。
 
 ---
 
@@ -357,21 +350,17 @@ export KB_S3_PREFIX="user-feedback/validated/"
 
 ### Q4: 如何避免每次点赞都触发同步？
 
-**答案**: 注释掉 `trigger_kb_sync()` 调用，改用定时批量同步
+**答案**: 使用环境变量禁用自动同步，改用定时批量同步
 
-**方法 1: 禁用自动同步**
+**方法 1: 通过环境变量禁用自动同步（推荐）**
 
-编辑 `feedback/operations/bedrock_kb_operations.py`:
+在 `.env` 文件中添加：
 
-```python
-async def add_validated_qa_to_kb(...):
-    # ... 上传到 S3 ...
-
-    # 5. 触发数据源同步（可选，可以定期批量同步）
-    # await trigger_kb_sync()  # ← 注释掉这行
-
-    return s3_key
+```bash
+AUTO_TRIGGER_INGESTION=false
 ```
+
+或者直接不设置 `KNOWLEDGE_BASE_ID`，这样点赞后只会上传到 S3，不会触发同步。
 
 **方法 2: 使用 Lambda 定时同步**
 
@@ -432,25 +421,32 @@ async def boost_document_priority(documents, boost_amount):
 
 ### 开发环境
 
-```python
-# 快速验证，每次点赞都同步
-configure_kb(
-    knowledge_base_id="YOUR_KB_ID",
-    s3_bucket="my-kb-dev"
-)
+在 `.env` 文件中配置（快速验证，每次点赞都同步）：
+
+```bash
+# .env
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=my-kb-dev
+KB_S3_PREFIX=validated-qa/
 ```
 
 ### 生产环境
 
-```python
-# 禁用自动同步，使用定时批量
-# 1. 注释掉 trigger_kb_sync()
-# 2. 使用 Lambda + EventBridge 每小时同步一次
-configure_kb(
-    knowledge_base_id="YOUR_KB_ID",
-    s3_bucket="my-kb-prod"
-)
+**选项 1: 只上传 S3，不自动同步（推荐）**
+
+```bash
+# .env
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=my-kb-prod
+KB_S3_PREFIX=validated-qa/
+AUTO_TRIGGER_INGESTION=false  # 禁用自动同步
 ```
+
+然后使用 Lambda + EventBridge 每小时批量同步一次。
+
+**选项 2: 完全手动同步**
+
+不在 `.env` 中设置 `KNOWLEDGE_BASE_ID`，这样系统只会记录点赞，不会上传到 S3。需要时手动运行同步脚本。
 
 **优势**:
 - 减少 API 调用次数

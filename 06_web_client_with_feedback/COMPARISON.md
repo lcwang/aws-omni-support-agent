@@ -60,7 +60,6 @@ aws-omni-support-agent-v2/
 ```python
 # ✅ 简单：标准 Python 导入
 from feedback import FeedbackRequest, submit_feedback, health_check
-from feedback.operations import configure_kb
 ```
 
 ---

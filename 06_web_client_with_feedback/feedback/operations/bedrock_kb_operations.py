@@ -31,24 +31,10 @@ logger = logging.getLogger(__name__)
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 bedrock_agent_client = boto3.client('bedrock-agent', region_name=AWS_REGION)
 
-# 配置（可以被 configure_kb() 覆盖，或从环境变量读取）
+# 配置（从环境变量读取）
 KNOWLEDGE_BASE_ID = CONFIG_KB_ID or None
 S3_BUCKET = KB_S3_BUCKET or None
 S3_PREFIX = KB_S3_PREFIX or 'validated-qa/'
-
-
-def configure_kb(knowledge_base_id: str, s3_bucket: str):
-    """
-    配置 Knowledge Base 信息
-
-    参数:
-        knowledge_base_id: Knowledge Base ID
-        s3_bucket: S3 存储桶名称
-    """
-    global KNOWLEDGE_BASE_ID, S3_BUCKET
-    KNOWLEDGE_BASE_ID = knowledge_base_id
-    S3_BUCKET = s3_bucket
-    logger.info(f"Configured KB: {knowledge_base_id}, Bucket: {s3_bucket}")
 
 
 # ==================== 点赞处理（简化版）====================
@@ -105,7 +91,7 @@ async def add_validated_qa_to_kb(
         S3 对象 key
     """
     if not KNOWLEDGE_BASE_ID or not S3_BUCKET:
-        logger.error("[Bedrock KB] KB not configured! Call configure_kb() first")
+        logger.error("[Bedrock KB] KB not configured! Set KNOWLEDGE_BASE_ID and KB_S3_BUCKET in environment")
         raise ValueError("Knowledge Base not configured")
 
     logger.info(f"[Bedrock KB] Adding validated QA: {question[:50]}...")

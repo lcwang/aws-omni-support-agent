@@ -10,7 +10,6 @@ from .dynamodb_operations import (
 )
 
 from .bedrock_kb_operations import (
-    configure_kb,
     add_validated_qa_to_kb,
     boost_document_priority,
     check_similarity,
@@ -22,7 +21,6 @@ __all__ = [
     'get_feedback_count',
     'query_feedback_by_category',
     'update_feedback_status',
-    'configure_kb',
     'add_validated_qa_to_kb',
     'boost_document_priority',
     'check_similarity',

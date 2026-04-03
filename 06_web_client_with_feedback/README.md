@@ -147,33 +147,23 @@ aws dynamodb scan \
 
 **Bedrock Knowledge Base** - 用于点赞更新 RAG
 
-在 `app.py` 启动前添加（在 `if __name__ == "__main__":` 部分）:
+在 `.env` 文件中添加配置（推荐）:
 
-```python
-if __name__ == "__main__":
-    import uvicorn
-
-    # ... 其他代码 ...
-
-    # 配置 Bedrock KB（可选）
-    if FEEDBACK_ENABLED:
-        try:
-            from feedback.operations import configure_kb
-            configure_kb(
-                knowledge_base_id="YOUR_KB_ID",
-                s3_bucket="YOUR_S3_BUCKET"
-            )
-            print(f"✅ Knowledge Base configured")
-        except Exception as e:
-            print(f"⚠️ Knowledge Base not configured: {e}")
-
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+```bash
+# .env
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=your-s3-bucket-name
+KB_S3_PREFIX=validated-qa/
 ```
+
+系统启动时会自动读取环境变量，无需修改代码。
 
 查看 Knowledge Base ID:
 ```bash
 aws bedrock-agent list-knowledge-bases --region us-east-1
 ```
+
+📖 **详细指南**: [ENV_CONFIG_GUIDE.md](ENV_CONFIG_GUIDE.md) 和 [THUMBS_UP_RAG_SETUP.md](THUMBS_UP_RAG_SETUP.md)
 
 ---
 
