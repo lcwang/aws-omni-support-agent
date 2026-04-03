@@ -106,19 +106,75 @@ cd ..
 
 ---
 
-### 4. 启动服务
+### 4. 配置环境变量（可选）
+
+如果需要启用点赞更新 RAG 功能，配置 `.env` 文件：
 
 ```bash
-# 确保在 06_web_client_with_feedback 目录
-python3 app.py
+# 复制配置模板
+cp .env.example .env
 
-# 或使用 uvicorn
+# 编辑配置文件
+vim .env
+# 或
+nano .env
+```
+
+在 `.env` 中添加配置：
+
+```bash
+# Knowledge Base 配置（可选，用于点赞更新 RAG）
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=your-s3-bucket-name
+KB_S3_PREFIX=validated-qa/
+
+# Agent 配置（如果没有 launch_result.pkl 文件）
+AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-agent-id
+```
+
+📖 **详细指南**: [ENV_CONFIG_GUIDE.md](ENV_CONFIG_GUIDE.md)
+
+---
+
+### 5. 启动服务
+
+**方式 1: 使用启动脚本（推荐）**
+
+```bash
+# 自动加载 .env 文件并启动
+./start.sh
+```
+
+**方式 2: 直接设置环境变量**
+
+```bash
+# 临时设置环境变量
+export KNOWLEDGE_BASE_ID="YOUR_KB_ID"
+export KB_S3_BUCKET="your-s3-bucket-name"
+export PORT=8000
+
+# 启动服务
+python3 app.py
+```
+
+**方式 3: 一行命令**
+
+```bash
+# 在命令前设置环境变量
+KNOWLEDGE_BASE_ID=YOUR_KB_ID KB_S3_BUCKET=your-bucket python3 app.py
+```
+
+**方式 4: 使用 uvicorn**
+
+```bash
+# 确保已加载环境变量
+source .env 2>/dev/null || true
 uvicorn app:app --reload --port 8000
 ```
 
 ---
 
-### 5. 测试
+### 6. 测试
 
 访问 http://localhost:8000
 
@@ -133,30 +189,58 @@ aws dynamodb scan \
   --limit 5
 ```
 
+验证 Knowledge Base（如已配置）:
+```bash
+# 查看 S3 中的验证 QA 文件
+aws s3 ls s3://your-bucket/validated-qa/
+
+# 查看文件内容
+aws s3 cp s3://your-bucket/validated-qa/xxx.txt -
+```
+
 ---
 
-## 🔧 配置
+## 🔧 配置说明
 
 ### 必需配置
 
-**DynamoDB 表** - 已创建 ✅
-- 表名: `support-agent-feedback-negative`
-- 用途: 存储点踩反馈
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `FEEDBACK_TABLE_NAME` | DynamoDB 表名 | `support-agent-feedback-negative` |
 
 ### 可选配置
 
-**Bedrock Knowledge Base** - 用于点赞更新 RAG
+| 配置项 | 说明 | 影响功能 |
+|--------|------|----------|
+| `KNOWLEDGE_BASE_ID` | Knowledge Base ID | 点赞更新 RAG |
+| `KB_S3_BUCKET` | S3 Bucket 名称 | 点赞更新 RAG |
+| `KB_S3_PREFIX` | S3 文件前缀 | 点赞更新 RAG（默认: `validated-qa/`）|
+| `AGENT_ARN` | Agent Runtime ARN | 如有 `launch_result.pkl` 可不设置 |
+| `PORT` | 服务端口 | 默认: `8000` |
 
-在 `.env` 文件中添加配置（推荐）:
+### 快速配置 Knowledge Base
+
+**方式 1: 使用快速配置脚本**
 
 ```bash
-# .env
-KNOWLEDGE_BASE_ID=YOUR_KB_ID
-KB_S3_BUCKET=your-s3-bucket-name
-KB_S3_PREFIX=validated-qa/
+chmod +x QUICK_ENABLE_THUMBS_UP.sh
+./QUICK_ENABLE_THUMBS_UP.sh
 ```
 
-系统启动时会自动读取环境变量，无需修改代码。
+脚本会交互式地引导你配置 `.env` 文件。
+
+**方式 2: 手动编辑 .env**
+
+```bash
+cp .env.example .env
+vim .env
+```
+
+添加：
+```bash
+KNOWLEDGE_BASE_ID=YOUR_KB_ID
+KB_S3_BUCKET=your-s3-bucket-name
+```
 
 查看 Knowledge Base ID:
 ```bash
