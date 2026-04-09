@@ -103,3 +103,15 @@ docker-compose.override.yml
 # GitHub Actions local testing
 act/
 .secrets
+dependencies.zip
+dependencies.hash
+launch_result.pkl
+
+# Build artifacts
+dependencies.zip
+dependencies.hash
+launch_result.pkl
+*.pkl
+.build_cache/
+__pycache__/
+.bedrock_agentcore.yaml

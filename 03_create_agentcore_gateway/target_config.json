@@ -1,0 +1,111 @@
+{
+  "lambdaTarget": {
+    "lambdaArn": "arn:aws:lambda:us-east-1:985539765717:function:aws-support-tools-lambda",
+    "toolSchema": {
+      "inlinePayload": [
+        {
+          "name": "create_support_case",
+          "description": "Create a new AWS Support case with specified subject, service code, category code, severity code, and communication body.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "subject": {"type": "string", "description": "The subject/title of the support case"},
+              "service_code": {"type": "string", "description": "The AWS service code"},
+              "category_code": {"type": "string", "description": "The category code for the issue"},
+              "severity_code": {"type": "string", "description": "The severity level: low, normal, high, urgent, or critical"},
+              "communication_body": {"type": "string", "description": "The detailed description of the issue"},
+              "cc_email_addresses": {"type": "array", "items": {"type": "string"}, "description": "Optional CC email addresses"},
+              "language": {"type": "string", "description": "Language code (default: en)"},
+              "issue_type": {"type": "string", "description": "Issue type: technical, account-and-billing, or service-limit"},
+              "attachment_set_id": {"type": "string", "description": "Optional attachment set ID"},
+              "_iam_user": {"type": "string", "description": "IAM user name for RBAC"}
+            },
+            "required": ["subject", "service_code", "category_code", "severity_code", "communication_body"]
+          }
+        },
+        {
+          "name": "describe_support_cases",
+          "description": "Query and retrieve information about existing AWS Support cases.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "case_id_list": {"type": "array", "items": {"type": "string"}, "description": "Optional list of case IDs"},
+              "display_id": {"type": "string", "description": "Optional display ID"},
+              "after_time": {"type": "string", "description": "Start date filter (ISO 8601)"},
+              "before_time": {"type": "string", "description": "End date filter (ISO 8601)"},
+              "include_resolved_cases": {"type": "boolean", "description": "Include resolved cases (default: false)"},
+              "include_communications": {"type": "boolean", "description": "Include communications (default: true)"},
+              "language": {"type": "string", "description": "Language code"},
+              "max_results": {"type": "integer", "description": "Max results (10-100)"},
+              "next_token": {"type": "string", "description": "Pagination token"}
+            },
+            "required": []
+          }
+        },
+        {
+          "name": "add_communication_to_case",
+          "description": "Add a new communication/message to an existing support case.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "case_id": {"type": "string", "description": "The internal case ID"},
+              "communication_body": {"type": "string", "description": "The text of the reply"},
+              "cc_email_addresses": {"type": "array", "items": {"type": "string"}, "description": "Optional CC emails"},
+              "attachment_set_id": {"type": "string", "description": "Optional attachment set ID"},
+              "_iam_user": {"type": "string", "description": "IAM user name for RBAC"}
+            },
+            "required": ["case_id", "communication_body"]
+          }
+        },
+        {
+          "name": "resolve_support_case",
+          "description": "Close/resolve an existing AWS Support case.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "case_id": {"type": "string", "description": "The internal case ID to resolve"},
+              "_iam_user": {"type": "string", "description": "IAM user name for RBAC"}
+            },
+            "required": ["case_id"]
+          }
+        },
+        {
+          "name": "describe_services",
+          "description": "Get AWS service codes and categories for case creation.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "service_code_list": {"type": "array", "items": {"type": "string"}, "description": "Optional service codes"},
+              "language": {"type": "string", "description": "Language code"}
+            },
+            "required": []
+          }
+        },
+        {
+          "name": "describe_severity_levels",
+          "description": "Get severity level options for support cases.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "language": {"type": "string", "description": "Language code"}
+            },
+            "required": []
+          }
+        },
+        {
+          "name": "add_attachments_to_set",
+          "description": "Upload file attachments for support cases.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "attachments": {"type": "array", "items": {"type": "object", "properties": {"fileName": {"type": "string"}, "data": {"type": "string"}}, "required": ["fileName", "data"]}, "description": "List of attachments"},
+              "attachment_set_id": {"type": "string", "description": "Optional existing attachment set ID"},
+              "_iam_user": {"type": "string", "description": "IAM user name for RBAC"}
+            },
+            "required": ["attachments"]
+          }
+        }
+      ]
+    }
+  }
+}
